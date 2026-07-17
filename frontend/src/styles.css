@@ -1,0 +1,116 @@
+@import url("https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap");
+
+:root {
+  font-family: "DM Sans", system-ui, sans-serif;
+  color: #e9efe9;
+  background: #0b0e0c;
+  font-synthesis: none;
+  --panel: #131814;
+  --panel-2: #181e19;
+  --line: #29302a;
+  --muted: #8e9a90;
+  --lime: #c9ff59;
+  --green: #62d98b;
+  --red: #ff5a5f;
+}
+
+* { box-sizing: border-box; }
+body { margin: 0; min-width: 320px; min-height: 100vh; background: radial-gradient(circle at 80% 0%, #182219 0, transparent 35%), #0b0e0c; }
+button, a { font: inherit; }
+button { color: inherit; }
+
+main { max-width: 1440px; margin: 0 auto; padding: 0 32px 120px; }
+.topbar { height: 86px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--line); }
+.brand { display: flex; align-items: center; gap: 13px; }
+.brand-mark { width: 44px; height: 44px; border-radius: 12px; display: grid; place-items: center; color: #0b0e0c; background: var(--lime); }
+.brand h1 { margin: 0; font-size: 17px; letter-spacing: .01em; }
+.brand p { margin: 3px 0 0; font-size: 12px; color: var(--muted); }
+.mock-badge { display: flex; gap: 7px; align-items: center; padding: 8px 12px; border: 1px solid #645c2c; border-radius: 999px; color: #eadb78; font-size: 12px; background: #262310; }
+
+.hero { display: grid; grid-template-columns: 1.1fr .9fr; align-items: end; gap: 50px; padding: 62px 0 42px; }
+.eyebrow { margin: 0 0 10px; font: 600 11px/1 "IBM Plex Mono", monospace; letter-spacing: .18em; color: var(--lime); }
+.hero h2 { margin: 0; max-width: 650px; font-size: clamp(38px, 5vw, 64px); line-height: 1.02; letter-spacing: -.045em; }
+.hero > div > p:last-child { margin: 18px 0 0; color: var(--muted); font-size: 15px; }
+.summary-grid { display: grid; grid-template-columns: repeat(4, 1fr); border: 1px solid var(--line); border-radius: 16px; overflow: hidden; background: rgba(19, 24, 20, .85); }
+.summary-grid div { padding: 20px 16px; border-right: 1px solid var(--line); }
+.summary-grid div:last-child { border: 0; }
+.summary-grid span { display: block; font: 600 24px/1 "IBM Plex Mono", monospace; }
+.summary-grid small { display: block; margin-top: 8px; color: var(--muted); white-space: nowrap; }
+.summary-grid .summary-recording span { color: var(--red); }
+
+.workflow-panel { display: flex; align-items: center; justify-content: space-between; gap: 24px; padding: 22px 24px; border: 1px solid #3c4b30; border-radius: 16px; background: linear-gradient(110deg, #1b2517, #141a15); }
+.workflow-copy { display: flex; align-items: center; gap: 18px; }
+.step-number { font: 600 28px/1 "IBM Plex Mono", monospace; color: var(--lime); }
+.workflow-copy h3 { margin: 0 0 5px; font-size: 16px; }
+.workflow-copy p { margin: 0; color: var(--muted); font-size: 13px; }
+.workflow-actions, .dock-actions { display: flex; gap: 10px; flex-shrink: 0; }
+.button { min-height: 42px; border: 0; border-radius: 10px; padding: 0 16px; display: inline-flex; align-items: center; justify-content: center; gap: 8px; cursor: pointer; text-decoration: none; font-weight: 600; transition: .18s ease; }
+.button:hover { transform: translateY(-1px); filter: brightness(1.06); }
+.button:disabled { opacity: .45; cursor: not-allowed; transform: none; }
+.button.secondary { background: var(--lime); color: #11150f; }
+.button.ghost { background: #232a24; border: 1px solid #39413a; }
+
+.camera-section { padding: 42px 0 0; }
+.section-heading { display: flex; justify-content: space-between; align-items: end; margin-bottom: 18px; }
+.section-heading h2 { margin: 0; font-size: 25px; }
+.selection-controls { display: flex; gap: 8px; }
+.selection-controls button { min-height: 34px; padding: 0 11px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); cursor: pointer; color: var(--muted); }
+.selection-controls button:hover { color: #fff; border-color: #4a554c; }
+.camera-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+.camera-card { position: relative; border: 1px solid var(--line); border-radius: 16px; padding: 20px; background: linear-gradient(145deg, var(--panel-2), var(--panel)); transition: border-color .18s ease; }
+.camera-card.selected { border-color: #59694d; }
+.camera-card.recording { border-color: #714044; box-shadow: inset 0 0 0 1px rgba(255,90,95,.08); }
+.card-select { position: absolute; inset: 0; width: 100%; border: 0; background: transparent; cursor: pointer; z-index: 0; }
+.checkbox { position: absolute; top: 18px; right: 18px; width: 20px; height: 20px; border: 1px solid #556057; border-radius: 6px; display: grid; place-items: center; }
+.checkbox.checked { color: #111; border-color: var(--lime); background: var(--lime); }
+.camera-heading, .recording-panel, .camera-metrics, .camera-footer { position: relative; z-index: 1; pointer-events: none; }
+.camera-heading { display: flex; align-items: center; gap: 12px; padding-right: 34px; }
+.camera-icon { width: 40px; height: 40px; display: grid; place-items: center; border-radius: 10px; background: #242b25; color: var(--lime); }
+.camera-heading h3 { margin: 0; font-size: 17px; }
+.camera-heading p { margin: 3px 0 0; color: var(--muted); font-size: 12px; }
+.status-dot { margin-left: auto; display: inline-flex; align-items: center; gap: 5px; font-size: 12px; }
+.status-dot.online, .sync-ok, .ready { color: var(--green); }
+.status-dot.offline, .sync-missing, .not-ready { color: var(--red); }
+.recording-panel { margin: 20px 0 18px; display: flex; align-items: center; gap: 13px; padding: 14px; border-radius: 11px; background: #101411; }
+.recording-panel.active { background: #231516; }
+.recording-light { width: 11px; height: 11px; border-radius: 50%; background: #4d554e; }
+.recording-panel.active .recording-light { background: var(--red); box-shadow: 0 0 0 5px rgba(255,90,95,.12); }
+.recording-panel div { display: flex; width: 100%; justify-content: space-between; align-items: center; }
+.recording-panel span { font: 600 11px/1 "IBM Plex Mono", monospace; letter-spacing: .12em; color: var(--muted); }
+.recording-panel.active span, .recording-panel.active strong { color: var(--red); }
+.recording-panel strong { font: 600 17px/1 "IBM Plex Mono", monospace; }
+.camera-metrics { display: grid; grid-template-columns: repeat(2, 1fr); gap: 1px; margin: 0; overflow: hidden; border: 1px solid var(--line); border-radius: 10px; background: var(--line); }
+.camera-metrics div { display: flex; justify-content: space-between; padding: 11px 12px; background: #151a16; }
+.camera-metrics dt { display: flex; align-items: center; gap: 6px; color: var(--muted); font-size: 12px; }
+.camera-metrics dd { margin: 0; font: 500 12px/1.4 "IBM Plex Mono", monospace; }
+.camera-footer { display: flex; justify-content: space-between; margin-top: 14px; font-size: 11px; color: var(--muted); }
+.camera-footer span:last-child { font-weight: 600; }
+.error-state { padding: 40px; border: 1px solid #6b383c; border-radius: 14px; color: #ff9ea1; background: #221416; text-align: center; }
+
+.control-dock { position: fixed; z-index: 20; left: 50%; bottom: 22px; transform: translateX(-50%); width: min(900px, calc(100% - 40px)); display: flex; align-items: center; justify-content: space-between; gap: 20px; padding: 13px 14px 13px 20px; border: 1px solid #3b443d; border-radius: 16px; background: rgba(20, 25, 21, .94); box-shadow: 0 18px 70px rgba(0,0,0,.45); backdrop-filter: blur(18px); }
+.control-dock > div:first-child { display: flex; flex-direction: column; }
+.control-dock strong { font-size: 14px; }
+.control-dock span { margin-top: 2px; color: var(--muted); font-size: 11px; }
+.button.stop { border: 1px solid #4e5850; background: #252b26; }
+.button.start { min-width: 170px; background: var(--red); color: #fff; }
+.rec-dot { width: 10px; height: 10px; margin: 0; border-radius: 50%; background: currentColor; }
+
+@media (max-width: 900px) {
+  main { padding-inline: 18px; }
+  .hero { grid-template-columns: 1fr; gap: 30px; padding-top: 40px; }
+  .workflow-panel { align-items: flex-start; flex-direction: column; }
+  .camera-grid { grid-template-columns: 1fr; }
+}
+
+@media (max-width: 580px) {
+  .mock-badge { display: none; }
+  .summary-grid { grid-template-columns: repeat(2, 1fr); }
+  .summary-grid div:nth-child(2) { border-right: 0; }
+  .summary-grid div:nth-child(-n+2) { border-bottom: 1px solid var(--line); }
+  .workflow-actions, .dock-actions { width: 100%; }
+  .workflow-actions { flex-direction: column; }
+  .button { flex: 1; }
+  .camera-metrics { grid-template-columns: 1fr; }
+  .control-dock { align-items: stretch; flex-direction: column; }
+}
+

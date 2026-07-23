@@ -1,4 +1,4 @@
-import type { BatchCommandResponse, CameraStatus } from "./types";
+import type { BatchCommandResponse, CameraStatus, CaptureSession, CreateTaskEventInput, DiscoverCameraInput, DiscoveryResponse, RecordingConfig, SyncValidationReport, TaskEvent, TaskEventListResponse } from "./types";
 
 async function request<T>(url: string, init?: RequestInit): Promise<T> {
   const response = await fetch(url, {
@@ -6,7 +6,8 @@ async function request<T>(url: string, init?: RequestInit): Promise<T> {
     headers: { "Content-Type": "application/json", ...init?.headers },
   });
   if (!response.ok) {
-    throw new Error(`请求失败：${response.status}`);
+    const payload = await response.json().catch(() => null) as { detail?: string } | null;
+    throw new Error(payload?.detail ?? `请求失败：${response.status}`);
   }
   return response.json() as Promise<T>;
 }
@@ -25,10 +26,77 @@ export function setShutter(
   });
 }
 
-export function markTimecodeSynced(cameraIds: string[]): Promise<BatchCommandResponse> {
-  return request("/api/cameras/timecode-synced", {
+export function applyRecordingConfig(cameraIds: string[]): Promise<BatchCommandResponse> {
+  return request("/api/cameras/apply-recording-config", {
     method: "POST",
     body: JSON.stringify({ camera_ids: cameraIds }),
   });
 }
 
+export function getRecordingConfig(): Promise<RecordingConfig> {
+  return request("/api/recording-config");
+}
+
+export function updateRecordingConfig(config: RecordingConfig): Promise<RecordingConfig> {
+  return request("/api/recording-config", {
+    method: "PUT",
+    body: JSON.stringify(config),
+  });
+}
+
+export function discoverCameras(input: DiscoverCameraInput): Promise<DiscoveryResponse> {
+  return request("/api/cameras/discover", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
+export function locateCamera(cameraId: string): Promise<CameraStatus> {
+  return request(`/api/cameras/${encodeURIComponent(cameraId)}/locate`, { method: "POST" });
+}
+
+export function renameCamera(cameraId: string, name: string): Promise<CameraStatus> {
+  return request(`/api/cameras/${encodeURIComponent(cameraId)}`, {
+    method: "PATCH",
+    body: JSON.stringify({ name }),
+  });
+}
+
+export async function removeCamera(cameraId: string): Promise<void> {
+  const response = await fetch(`/api/cameras/${encodeURIComponent(cameraId)}`, { method: "DELETE" });
+  if (!response.ok) throw new Error(`移除失败：${response.status}`);
+}
+
+export function getTaskEvents(): Promise<TaskEventListResponse> {
+  return request("/api/task-events");
+}
+
+export function createTaskEvent(input: CreateTaskEventInput): Promise<TaskEvent> {
+  return request("/api/task-events", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
+export function startCaptureSession(cameraIds: string[]): Promise<CaptureSession> {
+  return request("/api/capture-sessions/start", {
+    method: "POST",
+    body: JSON.stringify({ camera_ids: cameraIds }),
+  });
+}
+
+export function stopAndCollectCaptureSession(sessionId: string): Promise<CaptureSession> {
+  return request(`/api/capture-sessions/${encodeURIComponent(sessionId)}/stop-and-collect`, { method: "POST" });
+}
+
+export function getCaptureSession(sessionId: string): Promise<CaptureSession> {
+  return request(`/api/capture-sessions/${encodeURIComponent(sessionId)}`);
+}
+
+export function cancelCaptureCollection(sessionId: string): Promise<CaptureSession> {
+  return request(`/api/capture-sessions/${encodeURIComponent(sessionId)}/cancel-collection`, { method: "POST" });
+}
+
+export function analyzeSyncValidation(sessionId: string): Promise<SyncValidationReport> {
+  return request(`/api/capture-sessions/${encodeURIComponent(sessionId)}/sync-validation`, { method: "POST" });
+}

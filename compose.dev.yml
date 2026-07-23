@@ -3,6 +3,17 @@ services:
     build:
       context: ./backend
     restart: unless-stopped
+    command:
+      - uv
+      - run
+      - --no-sync
+      - uvicorn
+      - app.main:app
+      - --host
+      - 0.0.0.0
+      - --port
+      - "8000"
+      - --reload
     environment:
       GOPRO_DATA_DIR: /data
       GOPRO_CAPTURE_DIR: /captures
@@ -15,6 +26,7 @@ services:
     volumes:
       - gopro-data:/data
       - ./data:/captures
+      - ./backend/app:/app/app
       - ./cohn_credentials.json:/config/cohn_credentials.json
     healthcheck:
       test:
@@ -32,12 +44,19 @@ services:
   frontend:
     build:
       context: ./frontend
+      dockerfile: Dockerfile.dev
     restart: unless-stopped
     depends_on:
       backend:
         condition: service_healthy
+    environment:
+      VITE_API_PROXY_TARGET: http://backend:8000
     ports:
-      - "${GOPRO_WEB_PORT:-15173}:80"
+      - "${GOPRO_WEB_PORT:-15173}:15173"
+    volumes:
+      - ./frontend:/app
+      - frontend-node-modules:/app/node_modules
 
 volumes:
   gopro-data:
+  frontend-node-modules:

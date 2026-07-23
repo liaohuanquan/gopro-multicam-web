@@ -16,11 +16,11 @@ usage() {
 
 case "${1:-}" in
   dev)
-    docker compose up --build
+    docker compose -f compose.dev.yml up --build
     ;;
   up)
     docker compose up --build --detach
-    echo "GoPro 多机控制台已启动: http://localhost:${GOPRO_WEB_PORT:-8080}"
+    echo "GoPro 多机控制台已启动: http://localhost:${GOPRO_WEB_PORT:-15173}"
     ;;
   down)
     docker compose down
@@ -47,4 +47,3 @@ case "${1:-}" in
     exit 1
     ;;
 esac
-

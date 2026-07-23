@@ -1,0 +1,146 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Ego-Exo4D 时间同步机制说明</title>
+  <style>
+    :root { --ink:#14213d; --muted:#62718b; --line:#dce4ef; --bg:#f5f8fc; --card:#fff; --blue:#1565c0; --green:#1b7f4b; --gold:#a36400; --violet:#7052a8; }
+    * { box-sizing:border-box; } body { margin:0; color:var(--ink); background:var(--bg); font-family:Inter,"PingFang SC","Microsoft YaHei",sans-serif; line-height:1.65; }
+    .shell { max-width:1280px; margin:0 auto; padding:30px 24px 72px; display:grid; grid-template-columns:220px minmax(0,1fr); gap:28px; }
+    aside { position:sticky; top:22px; align-self:start; background:rgba(255,255,255,.75); border:1px solid var(--line); border-radius:14px; padding:16px; }
+    aside strong { display:block; margin-bottom:8px; } aside a { display:block; padding:6px 8px; color:#40516e; text-decoration:none; border-radius:7px; } aside a:hover { background:#e9f2ff; color:var(--blue); }
+    main { min-width:0; } .hero { background:linear-gradient(135deg,#112c50,#245d9c); color:white; padding:36px 40px; border-radius:20px; box-shadow:0 12px 32px #183a6530; }
+    h1 { margin:0 0 10px; font-size:clamp(28px,4vw,42px); line-height:1.25; } h2 { margin:42px 0 14px; font-size:25px; } h3 { margin:26px 0 10px; font-size:18px; } p { margin:8px 0 14px; } .sub { color:#dbeafe; font-size:16px; margin:0; }
+    .badge { display:inline-block; border:1px solid #b9d8ff; color:#e4f1ff; padding:3px 9px; border-radius:999px; font-size:13px; margin:0 7px 10px 0; }
+    .card,.note { background:var(--card); border:1px solid var(--line); border-radius:14px; padding:22px; margin:16px 0; } .note { border-left:5px solid var(--gold); background:#fffaf0; }
+    .grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:14px; } .metric { background:var(--card); border:1px solid var(--line); border-radius:14px; padding:18px; } .metric b { display:block; font-size:28px; color:var(--blue); } .metric span { color:var(--muted); font-size:14px; }
+    .flow { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:10px; align-items:stretch; margin:18px 0; } .step { position:relative; border:1px solid var(--line); background:#fff; border-radius:12px; padding:14px; min-height:116px; } .step b { display:block; color:var(--blue); margin-bottom:6px; } .step:not(:last-child)::after { content:"→"; position:absolute; right:-10px; top:43%; color:#7f96b3; font-size:24px; z-index:1; }
+    table { width:100%; border-collapse:collapse; overflow:hidden; border:1px solid var(--line); border-radius:12px; background:#fff; } th,td { padding:11px 12px; text-align:left; vertical-align:top; border-bottom:1px solid var(--line); } th { background:#edf4fc; color:#2d4668; } tr:last-child td { border-bottom:0; }
+    code { background:#edf1f6; padding:2px 5px; border-radius:5px; font-size:.92em; } pre { overflow:auto; padding:14px; background:#0f1d2d; color:#d9e9ff; border-radius:10px; font-size:13px; } details { background:#fff; border:1px solid var(--line); border-radius:10px; padding:12px 15px; margin:12px 0; } summary { cursor:pointer; font-weight:700; } .source { color:var(--muted); font-size:14px; }
+    .pill { display:inline-block; font-size:13px; font-weight:700; padding:2px 8px; border-radius:999px; background:#eaf4ff; color:var(--blue); } .ok { background:#e9f7ed; color:var(--green); } .warn { background:#fff4db; color:var(--gold); }
+    @media (max-width:900px) { .shell { grid-template-columns:1fr; padding:16px; } aside { position:static; } .grid,.flow { grid-template-columns:1fr; } .step:not(:last-child)::after { content:"↓"; right:auto; left:48%; top:auto; bottom:-18px; } .hero { padding:28px; } }
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <aside>
+      <strong>本文导航</strong>
+      <a href="#conclusion">结论</a>
+      <a href="#model">同步模型</a>
+      <a href="#files">文件与字段</a>
+      <a href="#capture">Capture 汇总表</a>
+      <a href="#take">Take 切片</a>
+      <a href="#implications">落地含义</a>
+      <a href="#sources">来源与边界</a>
+    </aside>
+    <main>
+      <section class="hero">
+        <span class="badge">Ego-Exo4D</span><span class="badge">cmu_bike17 实测</span><span class="badge">时间同步</span>
+        <h1>二维码公共时钟、线性映射与最近帧对齐</h1>
+        <p class="sub">面向多设备视频读取、同步展示与 Take 切片的事实说明。本文以归档中的 <code>cmu_bike17</code> 为例，不假设各设备帧时间完全相等。</p>
+      </section>
+
+      <section id="conclusion">
+        <h2>先说结论</h2>
+        <div class="card"><b>同步的核心不是“让帧号相同”，而是建立公共时间轴。</b>手机二维码提供公共时间锚点；每台设备把自己的时间戳线性映射到 <code>global_time</code>；Capture 汇总表再为每个公共时间点选取各设备最接近的一帧。Take 仅保存这张 Capture 级同步表的索引范围。</div>
+        <div class="grid">
+          <div class="metric"><b>20,641</b><span>aria01_214-1 的单设备帧数</span></div>
+          <div class="metric"><b>253</b><span>其中携带 <code>decoded_qr</code> 的帧数</span></div>
+          <div class="metric"><b>20,643</b><span>cmu_bike17 汇总 <code>timesync.csv</code> 行数</span></div>
+        </div>
+      </section>
+
+      <section id="model">
+        <h2>同步模型</h2>
+        <div class="flow">
+          <div class="step"><b>1. 公共锚点</b>手机播放约 29 FPS 的时间二维码视频。</div>
+          <div class="step"><b>2. 各设备采集</b>Aria 与外部 GoPro 分别拍摄同一二维码。</div>
+          <div class="step"><b>3. 单设备映射</b>从可解码帧拟合设备时间到公共时间的线性关系。</div>
+          <div class="step"><b>4. 会话对齐</b>按公共时间为每台设备选择最近帧，形成汇总表。</div>
+        </div>
+        <div class="card">
+          <h3>每台设备的时间换算</h3>
+          <pre>global_time = a × device_timestamp + b</pre>
+          <p>二维码可解码帧提供拟合锚点；普通帧即使 <code>decoded_qr</code> 为空，也使用同一映射计算 <code>global_time</code>。线性模型的前提是设备时钟速度在一次采集中近似恒定。</p>
+        </div>
+        <div class="note"><b>负数时间正常。</b>它表示位于第一个有效二维码锚点之前、由线性模型向前外推的公共时间，不是 Unix 时间戳，也不代表读取错误。</div>
+        <div class="card">
+          <h3>流程图</h3>
+          <p>可编辑源文件：<a href="Ego-Exo4D时间同步流程.drawio">Ego-Exo4D时间同步流程.drawio</a>。可在 <a target="_blank" rel="noopener" href="https://app.diagrams.net/?splash=0">diagrams.net</a> 打开后导入该文件继续编辑。</p>
+          <p class="source">图中黄色为公共时间锚点，蓝色为设备数据，绿色为映射，紫色为 Capture 级对齐。</p>
+        </div>
+      </section>
+
+      <section id="files">
+        <h2>文件与字段</h2>
+        <table>
+          <thead><tr><th>文件</th><th>粒度</th><th>用途</th><th>关键字段</th></tr></thead>
+          <tbody>
+            <tr><td><code>captures/cmu_bike17/timesync.csv</code></td><td>Capture</td><td>公共时间轴与多设备最近帧匹配结果</td><td><code>global_time</code>；每台设备各自一组帧与时间字段</td></tr>
+            <tr><td><code>timesync/aria01_214-1_timesync.csv</code></td><td>Aria 单流</td><td>从 Aria 本地采集时间推算公共时间</td><td><code>capture_timestamp_ns</code>, <code>decoded_qr</code>, <code>global_time</code></td></tr>
+            <tr><td><code>timesync/cam01_timesync.csv</code></td><td>GoPro 单相机</td><td>从容器时间戳推算公共时间</td><td><code>dts</code>, <code>index</code>, <code>pts</code>, <code>time</code>, <code>time_base</code>, <code>decoded_qr</code>, <code>global_time</code></td></tr>
+            <tr><td><code>captures.json</code></td><td>元数据</td><td>将 Capture 名称与 Capture UID 等采集信息关联</td><td><code>capture_name</code>, <code>capture_uid</code></td></tr>
+            <tr><td><code>takes.json</code></td><td>Take</td><td>引用所属 Capture 同步表并声明截取范围</td><td><code>capture_uid</code>, <code>timesync_start_idx</code>, <code>timesync_end_idx</code></td></tr>
+          </tbody>
+        </table>
+
+        <details><summary>Aria 单设备表：字段解释</summary>
+          <table><thead><tr><th>字段</th><th>含义</th></tr></thead><tbody>
+            <tr><td><code>capture_timestamp_ns</code></td><td>Aria 本地采集时间，单位纳秒。</td></tr>
+            <tr><td><code>decoded_qr</code></td><td>该帧直接解码到的公共时间；未识别时为空。</td></tr>
+            <tr><td><code>global_time</code></td><td>按线性模型换算后的公共时间，单位秒。</td></tr>
+          </tbody></table>
+        </details>
+        <details><summary>GoPro 单设备表：字段解释</summary>
+          <table><thead><tr><th>字段</th><th>含义</th></tr></thead><tbody>
+            <tr><td><code>index</code></td><td>视频帧序号。</td></tr>
+            <tr><td><code>dts</code> / <code>pts</code></td><td>容器解码 / 显示时间戳。</td></tr>
+            <tr><td><code>time_base</code></td><td>时间基；样本为 <code>1/60000</code>。</td></tr>
+            <tr><td><code>time</code></td><td>视频内部时间。</td></tr>
+            <tr><td><code>decoded_qr</code> / <code>global_time</code></td><td>二维码锚点与线性映射后的公共时间。</td></tr>
+          </tbody></table>
+        </details>
+      </section>
+
+      <section id="capture">
+        <h2>Capture 汇总表：最近帧匹配，不是严格相等</h2>
+        <p>汇总表的一行代表一个公共 <code>global_time</code>。每台设备在这一时间点选择最接近的本地帧，因此其设备级 <code>global_time</code> 允许与公共值略有差异；未开始录制或没有可匹配帧时，对应字段为空。</p>
+        <table><thead><tr><th>公共时间</th><th>Aria 示例</th><th>GoPro 示例</th><th>应如何理解</th></tr></thead><tbody>
+          <tr><td><code>324.939662</code></td><td>设备级时间可为 <code>324.939662</code></td><td>cam01 可为 <code>325.076707</code></td><td>不是错误；表示两台设备各自选到距离公共时间最近的帧。</td></tr>
+        </tbody></table>
+      </section>
+
+      <section id="take">
+        <h2>Take 如何从 Capture 同步表切片</h2>
+        <p>Take 不复制整张同步表。它通过所属 Capture 和索引范围定位所需片段。归档中的 <code>cmu_bike17_2</code> 记录为 <span class="pill">timesync_start_idx = 6672</span> 与 <span class="pill">timesync_end_idx = 8061</span>，任务时间为 2.23243s 到 45.33334s。</p>
+        <pre>timesync = pd.read_csv("captures/cmu_bike17/timesync.csv")
+take_timesync = timesync.iloc[timesync_start_idx + 1 : timesync_end_idx]</pre>
+        <p><span class="pill warn">边界提醒</span> <code>timesync_start_idx</code> 在现有用法中会先加 1；读取方必须与该切片口径保持一致，避免 Take 首帧偏一行。</p>
+      </section>
+
+      <section id="implications">
+        <h2>对多相机读取/同步展示的落地含义</h2>
+        <div class="card">
+          <ol>
+            <li>把 <code>global_time</code> 作为跨设备播放与对齐的共同坐标，而不是把每个视频的帧号当作全局帧号。</li>
+            <li>单设备表应保留设备原始时间字段与计算后的 <code>global_time</code>，便于检查映射和回溯 QR 锚点。</li>
+            <li>汇总表可作为多路展示的直接索引：每一公共时间行对应各设备的最近可用帧。</li>
+            <li>Take 级读取应按 <code>timesync_start_idx/end_idx</code> 从 Capture 表切片，而不是重新按秒数独立对每台设备查找。</li>
+          </ol>
+        </div>
+        <p><span class="pill ok">已验证事实</span> 以上规则来自归档字段、实际行数及样本数值。<span class="pill warn">待项目决定</span> Web 端是否在加载时预建索引、如何处理无匹配帧、以及是否展示时间差，属于本项目的后续实现选择，当前归档未定义。</p>
+      </section>
+
+      <section id="sources">
+        <h2>来源与边界</h2>
+        <div class="card">
+          <p><b>本地事实来源：</b><code>/home/qingjiao/dev/gopro-multicam-web/docs/exo4d-timesync-cmu_bike17.tar.gz</code>，包括 Capture / Take 元数据、汇总同步表与单设备同步表。</p>
+          <p><b>方法说明来源：</b>用户提供的 Ego-Exo4D 官方补充材料与元数据文档结论：二维码公共时间、线性时钟映射、最近帧合并、Take 索引切片，以及采集开头/结尾的人工同步核验。</p>
+          <p><b>本文边界：</b>说明的是 Ego-Exo4D 数据集同步口径，不声明当前项目已经实现同样的存储结构或算法。</p>
+        </div>
+      </section>
+    </main>
+  </div>
+</body>
+</html>

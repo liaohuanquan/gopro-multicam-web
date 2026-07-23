@@ -85,7 +85,7 @@ export interface CollectedFile {
 
 export interface CaptureSession {
   id: string;
-  status: "recording" | "collecting" | "complete" | "partial" | "collection_failed" | "cancelled";
+  status: "recording" | "collecting" | "collected" | "processing" | "complete" | "partial" | "collection_failed" | "process_failed" | "cancelled";
   started_at: string;
   stopped_at: string | null;
   camera_ids: string[];
@@ -96,6 +96,14 @@ export interface CaptureSession {
   bytes_total: number;
   bytes_downloaded: number;
   collected_files: CollectedFile[];
+  ego_files: Array<{
+    stream: "left" | "right";
+    local_path: string;
+    original_name: string;
+    size_bytes: number;
+  }>;
+  timesync_ready: boolean;
+  task_count: number;
   clips_total: number;
   clips_completed: number;
   grids_total: number;

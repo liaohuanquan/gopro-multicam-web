@@ -1,0 +1,12 @@
+{
+  "file": "egoexo-timesync-29fps-6min.mp4",
+  "purpose": "EGO/EXO 手动时间同步公共二维码视频",
+  "width": 1920,
+  "height": 1080,
+  "fps": "29/1",
+  "duration_seconds": 360,
+  "frame_count": 10440,
+  "payload_template": "GOPRO_SYNC_V1|FRAME={frame_number:06d}|FPS=29",
+  "global_time_seconds_formula": "frame_number / 29",
+  "playback_requirement": "从第0帧连续播放，不得暂停、拖动或循环；所有设备拍摄同一次播放"
+}

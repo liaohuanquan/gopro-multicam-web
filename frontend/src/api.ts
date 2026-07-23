@@ -93,6 +93,14 @@ export function getCaptureSession(sessionId: string): Promise<CaptureSession> {
   return request(`/api/capture-sessions/${encodeURIComponent(sessionId)}`);
 }
 
+export function getCaptureSessions(): Promise<CaptureSession[]> {
+  return request("/api/capture-sessions");
+}
+
+export function processCaptureSession(sessionId: string): Promise<CaptureSession> {
+  return request(`/api/capture-sessions/${encodeURIComponent(sessionId)}/process`, { method: "POST" });
+}
+
 export function cancelCaptureCollection(sessionId: string): Promise<CaptureSession> {
   return request(`/api/capture-sessions/${encodeURIComponent(sessionId)}/cancel-collection`, { method: "POST" });
 }

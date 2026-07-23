@@ -23,7 +23,7 @@ def build_frame(frame_number: int, fps: int) -> np.ndarray:
 
     cv2.putText(frame, "GOPRO SYNC VALIDATION", (560, 75), cv2.FONT_HERSHEY_SIMPLEX, 1.1, (25, 25, 25), 3, cv2.LINE_AA)
     cv2.putText(frame, f"{frame_number:06d}", (690, 190), cv2.FONT_HERSHEY_DUPLEX, 2.5, (0, 0, 0), 5, cv2.LINE_AA)
-    cv2.putText(frame, f"FRAME {frame_number:06d}   {frame_number / fps:08.3f} s   30 FPS", (480, 940), cv2.FONT_HERSHEY_SIMPLEX, 1.05, (40, 40, 40), 3, cv2.LINE_AA)
+    cv2.putText(frame, f"FRAME {frame_number:06d}   {frame_number / fps:08.3f} s   {fps} FPS", (480, 940), cv2.FONT_HERSHEY_SIMPLEX, 1.05, (40, 40, 40), 3, cv2.LINE_AA)
     cv2.putText(frame, "KEEP THE FULL QR INSIDE EVERY CAMERA", (515, 1010), cv2.FONT_HERSHEY_SIMPLEX, 0.85, (55, 55, 55), 2, cv2.LINE_AA)
     return frame
 

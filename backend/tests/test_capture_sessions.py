@@ -1,4 +1,5 @@
 import asyncio
+import json
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -82,7 +83,7 @@ async def test_collects_only_new_media_into_session_directory(tmp_path: Path) ->
 
     result = await store.get(session.id)
     session_dir = tmp_path / "sessions" / session.id
-    assert result.status == "complete"
+    assert result.status == "collected"
     assert result.files_total == 1
     assert result.files_completed == 1
     assert (session_dir / "source" / "GP01" / "GX010002.MP4").read_bytes() == b"video"
@@ -90,7 +91,7 @@ async def test_collects_only_new_media_into_session_directory(tmp_path: Path) ->
     assert (session_dir / "clips").is_dir()
 
 
-async def test_creates_numbered_task_clips_after_collection(tmp_path: Path) -> None:
+async def test_creates_numbered_task_clips_only_after_manual_processing(tmp_path: Path) -> None:
     adapter = FakeAdapter()
     store = CaptureSessionStore(tmp_path / "sessions", adapter, finalize_delay=0, clipper=FakeClipper())
     session = await store.begin(["camera-1"])
@@ -115,8 +116,18 @@ async def test_creates_numbered_task_clips_after_collection(tmp_path: Path) -> N
     while (await store.get(session.id)).status == "collecting":
         await asyncio.sleep(0.01)
 
-    result = await store.get(session.id)
+    collected = await store.get(session.id)
     output = tmp_path / "sessions" / session.id / "clips" / "task_001" / "GP01.mp4"
+    assert collected.status == "collected"
+    assert collected.task_count == 1
+    assert collected.clips_total == 0
+    assert not output.exists()
+
+    await store.start_processing(session.id)
+    while (await store.get(session.id)).status == "processing":
+        await asyncio.sleep(0.01)
+
+    result = await store.get(session.id)
     assert result.status == "complete"
     assert result.clips_total == 1
     assert result.clips_completed == 1
@@ -143,7 +154,7 @@ async def test_retries_media_list_after_recording_stops(tmp_path: Path) -> None:
         await asyncio.sleep(0.01)
 
     result = await store.get(session.id)
-    assert result.status == "complete"
+    assert result.status == "collected"
     assert result.files_completed == 1
     assert adapter.media_failures_remaining == 0
 
@@ -186,3 +197,35 @@ async def test_cancels_active_collection(tmp_path: Path) -> None:
 
     assert result.status == "cancelled"
     assert result.files_completed == 0
+
+
+async def test_lists_legacy_session_with_task_count_from_events(tmp_path: Path) -> None:
+    adapter = FakeAdapter()
+    root = tmp_path / "sessions"
+    store = CaptureSessionStore(root, adapter, finalize_delay=0)
+    session = await store.begin(["camera-1"])
+    session_path = root / session.id / "session.json"
+    payload = json.loads(session_path.read_text(encoding="utf-8"))
+    payload.pop("task_count", None)
+    session_path.write_text(json.dumps(payload), encoding="utf-8")
+    start_at = session.started_at
+    events = TaskEventListResponse(
+        server_utc=start_at,
+        events=[
+            TaskEvent(
+                id="start-1", task_id="task-1", task_name="任务 01", event=TaskEventType.START,
+                utc_at=start_at, created_at=start_at, countdown_seconds=0,
+            ),
+            TaskEvent(
+                id="end-1", task_id="task-1", task_name="任务 01", event=TaskEventType.END,
+                utc_at=start_at + timedelta(seconds=1), created_at=start_at, countdown_seconds=0,
+            ),
+        ],
+    )
+    (root / session.id / "task_events.json").write_text(events.model_dump_json(), encoding="utf-8")
+
+    reloaded = CaptureSessionStore(root, adapter, finalize_delay=0)
+    sessions = await reloaded.list_sessions()
+
+    assert len(sessions) == 1
+    assert sessions[0].task_count == 1

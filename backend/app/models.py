@@ -119,6 +119,13 @@ class CollectedFile(BaseModel):
     size_bytes: int = Field(ge=0)
 
 
+class EgoMediaFile(BaseModel):
+    stream: Literal["left", "right"]
+    local_path: str
+    original_name: str
+    size_bytes: int = Field(ge=0)
+
+
 class CaptureSession(BaseModel):
     id: str
     status: str
@@ -132,6 +139,9 @@ class CaptureSession(BaseModel):
     bytes_total: int = Field(default=0, ge=0)
     bytes_downloaded: int = Field(default=0, ge=0)
     collected_files: list[CollectedFile] = Field(default_factory=list)
+    ego_files: list[EgoMediaFile] = Field(default_factory=list)
+    timesync_ready: bool = False
+    task_count: int = Field(default=0, ge=0)
     clips_total: int = Field(default=0, ge=0)
     clips_completed: int = Field(default=0, ge=0)
     grids_total: int = Field(default=0, ge=0)
@@ -154,3 +164,28 @@ class SyncValidationReport(BaseModel):
     reference_camera_name: str
     target_fps: int = 30
     results: list[SyncValidationCameraResult]
+
+
+class TimelineSyncDeviceResult(BaseModel):
+    device_id: str
+    device_name: str
+    role: Literal["ego", "exo"]
+    stream: str
+    total_frames: int = Field(ge=0)
+    decoded_qr_frames: int = Field(ge=0)
+    inlier_qr_frames: int = Field(ge=0)
+    anchor_span_seconds: float = Field(ge=0)
+    slope: float
+    intercept: float
+    fit_rmse_ms: float = Field(ge=0)
+    median_match_error_ms: float | None = Field(default=None, ge=0)
+    max_match_error_ms: float | None = Field(default=None, ge=0)
+
+
+class TimelineSyncReport(BaseModel):
+    session_id: str
+    reference_device_id: str = "EGO_LEFT"
+    reference_device_name: str = "EGO 左目"
+    target_fps: int = 30
+    timeline_rows: int = Field(ge=0)
+    devices: list[TimelineSyncDeviceResult]

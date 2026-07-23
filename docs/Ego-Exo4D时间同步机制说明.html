@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Ego-Exo4D 时间同步机制说明</title>
+  <title>NAS 上的 Ego-Exo4D 时间同步实现说明</title>
   <style>
     :root { --ink:#14213d; --muted:#62718b; --line:#dce4ef; --bg:#f5f8fc; --card:#fff; --blue:#1565c0; --green:#1b7f4b; --gold:#a36400; --violet:#7052a8; }
     * { box-sizing:border-box; } body { margin:0; color:var(--ink); background:var(--bg); font-family:Inter,"PingFang SC","Microsoft YaHei",sans-serif; line-height:1.65; }
@@ -27,6 +27,7 @@
     <aside>
       <strong>本文导航</strong>
       <a href="#conclusion">结论</a>
+      <a href="#nas">NAS 数据边界</a>
       <a href="#model">同步模型</a>
       <a href="#files">文件与字段</a>
       <a href="#capture">Capture 汇总表</a>
@@ -36,19 +37,38 @@
     </aside>
     <main>
       <section class="hero">
-        <span class="badge">Ego-Exo4D</span><span class="badge">cmu_bike17 实测</span><span class="badge">时间同步</span>
-        <h1>二维码公共时钟、线性映射与最近帧对齐</h1>
-        <p class="sub">面向多设备视频读取、同步展示与 Take 切片的事实说明。本文以归档中的 <code>cmu_bike17</code> 为例，不假设各设备帧时间完全相等。</p>
+        <span class="badge">NAS 实际文件</span><span class="badge">cmu_bike17 实测</span><span class="badge">EGO / EXO</span>
+        <h1>NAS 上的 Ego-Exo4D 是怎样同步的</h1>
+        <p class="sub">从 Capture 原始设备表、单设备 timesync、会话汇总表到 Take 索引切片，解释二维码公共时钟、线性映射与最近帧对齐的完整数据链路。</p>
       </section>
 
       <section id="conclusion">
         <h2>先说结论</h2>
-        <div class="card"><b>同步的核心不是“让帧号相同”，而是建立公共时间轴。</b>手机二维码提供公共时间锚点；每台设备把自己的时间戳线性映射到 <code>global_time</code>；Capture 汇总表再为每个公共时间点选取各设备最接近的一帧。Take 仅保存这张 Capture 级同步表的索引范围。</div>
+        <div class="card"><b>同步的核心不是“让帧号相同”，而是建立二维码公共计数轴。</b>手机二维码提供公共锚点；每台设备把自己的本地时间戳线性映射到 <code>global_time</code>；Capture 汇总表再为每个参考时刻选取各设备最接近的一帧。Take 只保存 Capture 级同步表中的索引范围。</div>
         <div class="grid">
           <div class="metric"><b>20,641</b><span>aria01_214-1 的单设备帧数</span></div>
           <div class="metric"><b>253</b><span>其中携带 <code>decoded_qr</code> 的帧数</span></div>
           <div class="metric"><b>20,643</b><span>cmu_bike17 汇总 <code>timesync.csv</code> 行数</span></div>
         </div>
+        <div class="note"><b>重要口径：</b>样例中的 <code>global_time</code> 不是 Unix 时间，也不是直接以秒保存的时间。它以约 29 Hz 递增，实际表达二维码公共计数位置；若要估算秒数，需要除以该设备拟合得到的约 29.05 units/s 斜率。</div>
+      </section>
+
+      <section id="nas">
+        <h2>NAS 数据边界：哪些是下载的，哪些是同步结果</h2>
+        <div class="card">
+          <p>归档中的 <code>_registry/command.txt</code> 是 NAS 下载与整理脚本：它调用 <code>egoexo</code> 下载 metadata、captures、takes、frame-aligned videos、轨迹和特征，并维护已下载 UID。它<b>没有执行二维码识别或线性拟合</b>。</p>
+          <p><code>captures/cmu_bike17/timesync/</code>、Capture 级 <code>timesync.csv</code>、<code>timesync_start_idx</code> 和 frame-aligned videos 是 Ego-Exo4D 数据产物。NAS 当前保存的是同步完成后的结果，而不是生成这些结果的官方同步程序。</p>
+        </div>
+        <table>
+          <thead><tr><th>层级</th><th>样例对象</th><th>在同步中的职责</th></tr></thead>
+          <tbody>
+            <tr><td>Capture</td><td><code>cmu_bike17</code></td><td>一次连续多设备采集，保存 EGO、EXO 原始设备关系和 Capture 级同步表。</td></tr>
+            <tr><td>EGO</td><td><code>aria01</code></td><td>Aria 设备，包含 slam-left、slam-right、eye tracking、RGB 等内部流；<code>captures.json</code> 标记 <code>is_ego=true</code>。</td></tr>
+            <tr><td>EXO</td><td><code>cam01～cam04</code></td><td>四台外部 HERO10；各自使用 MP4 PTS/DTS 建立本地时间轴。</td></tr>
+            <tr><td>额外外部相机</td><td><code>moblie</code></td><td>Capture 元数据中存在，但该归档未提供对应的单设备 timesync CSV。</td></tr>
+            <tr><td>Take</td><td><code>cmu_bike17_2</code></td><td>从 Capture 同步表按行索引截出某条具体任务。</td></tr>
+          </tbody>
+        </table>
       </section>
 
       <section id="model">
@@ -61,10 +81,21 @@
         </div>
         <div class="card">
           <h3>每台设备的时间换算</h3>
-          <pre>global_time = a × device_timestamp + b</pre>
-          <p>二维码可解码帧提供拟合锚点；普通帧即使 <code>decoded_qr</code> 为空，也使用同一映射计算 <code>global_time</code>。线性模型的前提是设备时钟速度在一次采集中近似恒定。</p>
+          <pre>global_qr_position = a × device_timestamp_seconds + b</pre>
+          <p>二维码可解码帧提供拟合锚点；普通帧即使 <code>decoded_qr</code> 为空，也使用同一映射计算 <code>global_time</code>。线性模型的前提是设备时钟速度在一次 Capture 中近似恒定。样例各设备的 <code>a</code> 约为 29.0446～29.0525 个二维码单位/秒。</p>
         </div>
-        <div class="note"><b>负数时间正常。</b>它表示位于第一个有效二维码锚点之前、由线性模型向前外推的公共时间，不是 Unix 时间戳，也不代表读取错误。</div>
+        <div class="note"><b>负数 global_time 正常。</b>它表示帧位于公共二维码计数原点之前，是线性模型向前外推的结果；它不代表系统时间早于 1970，也不代表文件损坏。</div>
+        <h3>样例中每台设备的锚点与拟合斜率</h3>
+        <table>
+          <thead><tr><th>设备流</th><th>总帧数</th><th>含 decoded_qr 的帧</th><th>global_time 增速</th></tr></thead>
+          <tbody>
+            <tr><td><code>aria01_214-1</code> RGB</td><td>20,641</td><td>253</td><td>约 29.0446 units/s</td></tr>
+            <tr><td><code>cam01</code></td><td>32,048</td><td>730</td><td>约 29.0464 units/s</td></tr>
+            <tr><td><code>cam02</code></td><td>31,101</td><td>1,076</td><td>约 29.0480 units/s</td></tr>
+            <tr><td><code>cam03</code></td><td>29,963</td><td>985</td><td>约 29.0507 units/s</td></tr>
+            <tr><td><code>cam04</code></td><td>28,889</td><td>1,002</td><td>约 29.0525 units/s</td></tr>
+          </tbody>
+        </table>
         <div class="card">
           <h3>流程图</h3>
           <p>可编辑源文件：<a href="Ego-Exo4D时间同步流程.drawio">Ego-Exo4D时间同步流程.drawio</a>。可在 <a target="_blank" rel="noopener" href="https://app.diagrams.net/?splash=0">diagrams.net</a> 打开后导入该文件继续编辑。</p>
@@ -89,7 +120,7 @@
           <table><thead><tr><th>字段</th><th>含义</th></tr></thead><tbody>
             <tr><td><code>capture_timestamp_ns</code></td><td>Aria 本地采集时间，单位纳秒。</td></tr>
             <tr><td><code>decoded_qr</code></td><td>该帧直接解码到的公共时间；未识别时为空。</td></tr>
-            <tr><td><code>global_time</code></td><td>按线性模型换算后的公共时间，单位秒。</td></tr>
+            <tr><td><code>global_time</code></td><td>按线性模型换算后的二维码公共计数位置；样例约以 29.05 units/s 推进。</td></tr>
           </tbody></table>
         </details>
         <details><summary>GoPro 单设备表：字段解释</summary>
@@ -105,10 +136,15 @@
 
       <section id="capture">
         <h2>Capture 汇总表：最近帧匹配，不是严格相等</h2>
-        <p>汇总表的一行代表一个公共 <code>global_time</code>。每台设备在这一时间点选择最接近的本地帧，因此其设备级 <code>global_time</code> 允许与公共值略有差异；未开始录制或没有可匹配帧时，对应字段为空。</p>
+        <p>汇总表的一行代表主参考流的一个公共 <code>global_time</code>。样例的行数和数值关系显示它以 Aria 流作为参考轴；每台 EXO 在该位置选择预测 <code>global_time</code> 最接近的本地帧。因此设备级值允许与公共值略有差异；设备尚未开始或已经结束时，对应字段为空。</p>
         <table><thead><tr><th>公共时间</th><th>Aria 示例</th><th>GoPro 示例</th><th>应如何理解</th></tr></thead><tbody>
-          <tr><td><code>324.939662</code></td><td>设备级时间可为 <code>324.939662</code></td><td>cam01 可为 <code>325.076707</code></td><td>不是错误；表示两台设备各自选到距离公共时间最近的帧。</td></tr>
+          <tr><td><code>324.939662</code></td><td>设备级位置可为 <code>324.939662</code></td><td>cam01 可为 <code>325.076707</code></td><td>差 0.137045 个二维码单位，按约 29.05 units/s 换算约 4.72 ms。</td></tr>
         </tbody></table>
+        <div class="grid">
+          <div class="metric"><b>≈ 8.3 ms</b><span>cam01～cam04 最近帧匹配绝对误差中位数</span></div>
+          <div class="metric"><b>≈ 16.7 ms</b><span>四台 EXO 样例中的最大最近帧误差</span></div>
+          <div class="metric"><b>59.94 FPS</b><span>GoPro 样例约半帧对应 8.34 ms</span></div>
+        </div>
       </section>
 
       <section id="take">
@@ -123,7 +159,7 @@ take_timesync = timesync.iloc[timesync_start_idx + 1 : timesync_end_idx]</pre>
         <h2>对多相机读取/同步展示的落地含义</h2>
         <div class="card">
           <ol>
-            <li>把 <code>global_time</code> 作为跨设备播放与对齐的共同坐标，而不是把每个视频的帧号当作全局帧号。</li>
+            <li>把 <code>global_time</code> 作为跨设备播放与对齐的共同坐标；不要把它误当 Unix 秒，也不要把每个视频的本地帧号当作全局帧号。</li>
             <li>单设备表应保留设备原始时间字段与计算后的 <code>global_time</code>，便于检查映射和回溯 QR 锚点。</li>
             <li>汇总表可作为多路展示的直接索引：每一公共时间行对应各设备的最近可用帧。</li>
             <li>Take 级读取应按 <code>timesync_start_idx/end_idx</code> 从 Capture 表切片，而不是重新按秒数独立对每台设备查找。</li>
@@ -137,7 +173,8 @@ take_timesync = timesync.iloc[timesync_start_idx + 1 : timesync_end_idx]</pre>
         <div class="card">
           <p><b>本地事实来源：</b><code>/home/qingjiao/dev/gopro-multicam-web/docs/exo4d-timesync-cmu_bike17.tar.gz</code>，包括 Capture / Take 元数据、汇总同步表与单设备同步表。</p>
           <p><b>方法说明来源：</b>用户提供的 Ego-Exo4D 官方补充材料与元数据文档结论：二维码公共时间、线性时钟映射、最近帧合并、Take 索引切片，以及采集开头/结尾的人工同步核验。</p>
-          <p><b>本文边界：</b>说明的是 Ego-Exo4D 数据集同步口径，不声明当前项目已经实现同样的存储结构或算法。</p>
+          <p><b>数值验证方式：</b>使用归档 CSV 的相邻 <code>device time/global_time</code> 关系计算斜率，并按 Capture 汇总表逐行计算设备级 <code>global_time</code> 与公共值的绝对差。该计算说明了文件内数值口径，但不等同于取得官方同步生成源码。</p>
+          <p><b>本文边界：</b>说明的是 NAS 已下载的 Ego-Exo4D 数据产物和可验证的数据关系，不声明当前 GoPro Web 项目已经实现同样的存储结构或算法。</p>
         </div>
       </section>
     </main>

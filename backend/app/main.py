@@ -186,6 +186,11 @@ async def start_capture_session(request: CaptureSessionRequest) -> CaptureSessio
         raise HTTPException(status_code=409, detail=str(exc)) from exc
 
 
+@app.get("/api/capture-sessions", response_model=list[CaptureSession])
+async def list_capture_sessions() -> list[CaptureSession]:
+    return await capture_session_store.list_sessions()
+
+
 @app.post("/api/capture-sessions/{session_id}/stop-and-collect", response_model=CaptureSession)
 async def stop_and_collect_capture_session(session_id: str) -> CaptureSession:
     try:
@@ -214,6 +219,16 @@ async def cancel_capture_collection(session_id: str) -> CaptureSession:
         return await capture_session_store.cancel_collection(session_id)
     except CaptureSessionNotFoundError as exc:
         raise HTTPException(status_code=404, detail="采集会话不存在") from exc
+
+
+@app.post("/api/capture-sessions/{session_id}/process", response_model=CaptureSession)
+async def process_capture_session(session_id: str) -> CaptureSession:
+    try:
+        return await capture_session_store.start_processing(session_id)
+    except CaptureSessionNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="采集会话不存在") from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
 
 
 @app.post("/api/capture-sessions/{session_id}/sync-validation", response_model=SyncValidationReport)

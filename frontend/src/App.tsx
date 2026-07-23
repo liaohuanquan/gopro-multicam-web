@@ -8,6 +8,7 @@ import { ControlDock } from "./components/ControlDock";
 import { TaskConsole } from "./components/TaskConsole";
 import { WorkspaceHeader } from "./components/WorkspaceHeader";
 import { SyncValidationDialog } from "./components/SyncValidationDialog";
+import { SessionsPage } from "./components/SessionsPage";
 import { useCaptureConsole } from "./hooks/useCaptureConsole";
 import type { CameraStatus } from "./types";
 
@@ -17,6 +18,7 @@ export default function App() {
   const [onboardingOpen, setOnboardingOpen] = useState(false);
   const [recordingConfigOpen, setRecordingConfigOpen] = useState(false);
   const [syncValidationOpen, setSyncValidationOpen] = useState(false);
+  const [currentPage, setCurrentPage] = useState<"capture" | "projects">("capture");
   const capture = useCaptureConsole({ onDiscovered: () => setOnboardingOpen(false) });
 
   function renameCamera(camera: CameraStatus) {
@@ -39,9 +41,12 @@ export default function App() {
         summary={capture.summary}
         total={capture.cameras.length}
         timecodeUrl={TIMECODE_URL}
+        currentPage={currentPage}
+        onNavigate={setCurrentPage}
       />
 
       <div className="workspace">
+        {currentPage === "projects" ? <SessionsPage /> : <>
         <WorkspaceHeader onAddCamera={() => setOnboardingOpen(true)} />
         {sessionRecording && (
           <TaskConsole
@@ -67,9 +72,10 @@ export default function App() {
           onRename={renameCamera}
           onRemove={removeCamera}
         />
+        </>}
       </div>
 
-      <ControlDock
+      {currentPage === "capture" && <ControlDock
         cameraCount={capture.effectiveSelectedIds.length}
         explicitlySelected={capture.selectedIds.length > 0}
         session={capture.captureSession}
@@ -78,7 +84,8 @@ export default function App() {
         onStart={capture.startRecording}
         onStop={capture.stopRecording}
         onCancel={capture.cancelCollection}
-      />
+        onOpenProjects={() => setCurrentPage("projects")}
+      />}
 
       <OnboardingDialog
         open={onboardingOpen}

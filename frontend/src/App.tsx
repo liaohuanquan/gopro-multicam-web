@@ -6,7 +6,6 @@ import { AppSidebar } from "./components/AppSidebar";
 import { CameraSection } from "./components/CameraSection";
 import { ControlDock } from "./components/ControlDock";
 import { TaskConsole } from "./components/TaskConsole";
-import { WorkspaceHeader } from "./components/WorkspaceHeader";
 import { SyncValidationDialog } from "./components/SyncValidationDialog";
 import { SessionsPage } from "./components/SessionsPage";
 import { useCaptureConsole } from "./hooks/useCaptureConsole";
@@ -47,7 +46,6 @@ export default function App() {
 
       <div className="workspace">
         {currentPage === "projects" ? <SessionsPage /> : <>
-        <WorkspaceHeader onAddCamera={() => setOnboardingOpen(true)} />
         {sessionRecording && (
           <TaskConsole
             data={capture.taskEventsQuery.data}
@@ -77,7 +75,7 @@ export default function App() {
 
       {currentPage === "capture" && <ControlDock
         cameraCount={capture.effectiveSelectedIds.length}
-        explicitlySelected={capture.selectedIds.length > 0}
+        explicitlySelected={capture.selectionExplicit}
         session={capture.captureSession}
         startDisabled={cameraControlsDisabled || sessionRecording || sessionCollecting}
         stopDisabled={cameraControlsDisabled || !sessionRecording}

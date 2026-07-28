@@ -3,7 +3,7 @@ from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Response, status
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse
+from fastapi.responses import FileResponse, StreamingResponse
 
 from .adapters import CameraNotFoundError, CameraRegistrationError, CameraUnavailableError, CohnCameraAdapter
 from .capture_sessions import CaptureSessionNotFoundError, CaptureSessionStore
@@ -14,10 +14,13 @@ from .models import (
     CameraStatus,
     CaptureSession,
     CaptureSessionRequest,
+    SessionMediaAsset,
     DiscoverCameraRequest,
     DiscoveryResponse,
     HealthResponse,
+    NetworkConfig,
     RecordingConfig,
+    RecordingPreset,
     CreateTaskEventRequest,
     TaskEvent,
     TaskEventListResponse,
@@ -34,8 +37,8 @@ adapter = CohnCameraAdapter(
     data_dir / "cameras.json",
     scan_cidrs=os.getenv("GOPRO_SCAN_CIDRS", "192.168.1.0/24"),
     preview_port_start=int(os.getenv("GOPRO_PREVIEW_PORT_START", "8554")),
-    credentials_path=Path(os.environ["GOPRO_CREDENTIALS_FILE"])
-    if os.getenv("GOPRO_CREDENTIALS_FILE")
+    credentials_path=Path(os.environ["GOPRO_CONFIG_FILE"])
+    if os.getenv("GOPRO_CONFIG_FILE")
     else None,
 )
 service = CameraControlService(adapter)
@@ -94,6 +97,47 @@ async def get_recording_config() -> RecordingConfig:
 async def update_recording_config(request: RecordingConfig) -> RecordingConfig:
     try:
         return await adapter.update_recording_config(request)
+    except CameraRegistrationError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.get("/api/recording-presets", response_model=list[RecordingPreset])
+async def get_recording_presets() -> list[RecordingPreset]:
+    try:
+        return adapter.get_recording_presets()
+    except CameraRegistrationError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.get("/api/config/network", response_model=NetworkConfig)
+async def get_network_config() -> NetworkConfig:
+    try:
+        return adapter.get_network_config()
+    except CameraRegistrationError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.put("/api/config/network", response_model=NetworkConfig)
+async def update_network_config(request: NetworkConfig) -> NetworkConfig:
+    try:
+        return await adapter.update_network_config(request)
+    except CameraRegistrationError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.put("/api/recording-presets", response_model=RecordingPreset)
+async def save_recording_preset(request: RecordingPreset) -> RecordingPreset:
+    try:
+        return await adapter.save_recording_preset(request)
+    except CameraRegistrationError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.delete("/api/recording-presets/{name}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_recording_preset(name: str) -> Response:
+    try:
+        await adapter.delete_recording_preset(name)
+        return Response(status_code=status.HTTP_204_NO_CONTENT)
     except CameraRegistrationError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
@@ -189,6 +233,26 @@ async def start_capture_session(request: CaptureSessionRequest) -> CaptureSessio
 @app.get("/api/capture-sessions", response_model=list[CaptureSession])
 async def list_capture_sessions() -> list[CaptureSession]:
     return await capture_session_store.list_sessions()
+
+
+@app.get("/api/capture-sessions/{session_id}/media", response_model=list[SessionMediaAsset])
+async def list_capture_session_media(session_id: str) -> list[SessionMediaAsset]:
+    try:
+        return await capture_session_store.list_media_assets(session_id)
+    except CaptureSessionNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="采集会话不存在") from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@app.get("/api/capture-sessions/{session_id}/media-file/{media_path:path}")
+async def get_capture_session_media_file(session_id: str, media_path: str) -> FileResponse:
+    try:
+        await capture_session_store.get(session_id)
+        path = capture_session_store.resolve_media_path(session_id, media_path)
+    except (CaptureSessionNotFoundError, FileNotFoundError) as exc:
+        raise HTTPException(status_code=404, detail="素材不存在") from exc
+    return FileResponse(path, media_type="video/mp4", filename=path.name, content_disposition_type="inline")
 
 
 @app.post("/api/capture-sessions/{session_id}/stop-and-collect", response_model=CaptureSession)

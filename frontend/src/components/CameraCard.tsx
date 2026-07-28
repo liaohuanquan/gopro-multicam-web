@@ -23,7 +23,7 @@ export function CameraCard({ camera, selected, onToggle, onRemove, onLocate, onR
     <article className={`camera-card ${selected ? "selected" : ""} ${camera.recording ? "recording" : ""}`}>
       <div className="camera-heading">
         <div className="camera-icon"><Camera size={22} /></div>
-        <div><h3>{camera.name}</h3><p>{camera.location}</p></div>
+        <div><h3>{camera.name}</h3><p>{camera.model_name}{camera.firmware_version ? ` · ${camera.firmware_version}` : ""}</p></div>
         <div className="camera-actions">
           <span className={`status-dot ${camera.online ? "online" : "offline"}`}>
             {camera.online ? <Wifi size={14} /> : <WifiOff size={14} />}{camera.online ? "在线" : "离线"}

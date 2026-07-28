@@ -1,5 +1,6 @@
 import asyncio
 import json
+import subprocess
 from contextlib import suppress
 from datetime import datetime, timezone
 from pathlib import Path
@@ -7,7 +8,7 @@ from time import monotonic
 
 from .adapters import CameraMediaFile, CohnCameraAdapter
 from .media_clipper import MediaClipper
-from .models import CaptureSession, CollectedFile, EgoMediaFile, TaskEventListResponse
+from .models import CaptureSession, CollectedFile, EgoMediaFile, SessionMediaAsset, TaskEventListResponse
 
 
 class CaptureSessionNotFoundError(KeyError):
@@ -118,6 +119,78 @@ class CaptureSessionStore:
         session.errors.extend(errors)
         await self._save(session)
         return session
+
+    def resolve_media_path(self, session_id: str, media_path: str) -> Path:
+        """仅允许访问当前 Session 的 source 和 clips 视频。"""
+        session_dir = self._session_dir(session_id).resolve()
+        candidate = (session_dir / media_path).resolve()
+        try:
+            relative = candidate.relative_to(session_dir)
+        except ValueError as exc:
+            raise FileNotFoundError(media_path) from exc
+        if not relative.parts or relative.parts[0] not in {"source", "clips"}:
+            raise FileNotFoundError(media_path)
+        if candidate.suffix.lower() not in {".mp4", ".mov"} or not candidate.is_file():
+            raise FileNotFoundError(media_path)
+        return candidate
+
+    async def list_media_assets(self, session_id: str) -> list[SessionMediaAsset]:
+        await self.get(session_id)
+        session_dir = self._session_dir(session_id)
+        paths = sorted(
+            [
+                path
+                for directory in (session_dir / "source", session_dir / "clips")
+                if directory.exists()
+                for path in directory.rglob("*")
+                if path.is_file() and path.suffix.lower() in {".mp4", ".mov"}
+            ],
+            key=lambda path: (0 if path.is_relative_to(session_dir / "source") else 1, path.as_posix()),
+        )
+        return await asyncio.gather(*(self._probe_media_asset(session_dir, path) for path in paths))
+
+    @staticmethod
+    async def _probe_media_asset(session_dir: Path, path: Path) -> SessionMediaAsset:
+        result = await asyncio.to_thread(
+            subprocess.run,
+            [
+                "ffprobe", "-v", "error", "-select_streams", "v:0",
+                "-show_entries",
+                "format=duration:format_tags=creation_time,timecode:stream=width,height,codec_name,avg_frame_rate:stream_tags=timecode",
+                "-of", "json", str(path),
+            ],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if result.returncode != 0:
+            raise RuntimeError(f"无法读取素材 {path.name}：{result.stderr.strip()}")
+        payload = json.loads(result.stdout)
+        format_info = payload.get("format", {})
+        stream = next(iter(payload.get("streams", [])), {})
+        tags = format_info.get("tags", {})
+        stream_tags = stream.get("tags", {})
+        fps = MediaClipper._parse_fps(stream.get("avg_frame_rate", "0/1"))
+        relative = path.relative_to(session_dir)
+        creation_time = tags.get("creation_time")
+        if relative.parts[0] == "source":
+            camera_name = relative.parts[1] if len(relative.parts) > 2 else relative.parent.name
+        else:
+            camera_name = "宫格" if path.stem == "preview_grid" else path.stem
+        return SessionMediaAsset(
+            path=relative.as_posix(),
+            name=path.name,
+            kind="source" if relative.parts[0] == "source" else "clip",
+            camera_name=camera_name,
+            size_bytes=path.stat().st_size,
+            duration_seconds=float(format_info.get("duration", 0)),
+            fps=fps,
+            width=int(stream.get("width", 0)),
+            height=int(stream.get("height", 0)),
+            codec=str(stream.get("codec_name", "unknown")),
+            creation_time=datetime.fromisoformat(creation_time.replace("Z", "+00:00")) if creation_time else None,
+            timecode=tags.get("timecode") or stream_tags.get("timecode"),
+        )
 
     async def save_ego_media(
         self,

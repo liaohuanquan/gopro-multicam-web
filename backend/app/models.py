@@ -19,6 +19,8 @@ class CameraStatus(BaseModel):
     id: str
     name: str
     serial: str
+    model_name: str = "GoPro"
+    firmware_version: str | None = None
     location: str
     online: bool
     battery_percent: int | None = Field(default=None, ge=0, le=100)
@@ -60,7 +62,7 @@ class HealthResponse(BaseModel):
 
 
 class DiscoverCameraRequest(BaseModel):
-    profile_label: str = Field(default="4K 30 FPS · Wide · 10-bit", max_length=128)
+    profile_label: str = Field(default="4K 30 FPS · Wide · 8-bit", max_length=128)
 
 
 class RecordingConfig(BaseModel):
@@ -74,6 +76,17 @@ class RecordingConfig(BaseModel):
     hindsight: bool | None = None
     shutter_speed: Literal[0, 120, 240, 480] | None = None
     iso: Literal[100, 200, 400, 800, 1600] | None = None
+
+
+class RecordingPreset(BaseModel):
+    name: str = Field(min_length=1, max_length=32)
+    config: RecordingConfig
+    builtin: bool = False
+
+
+class NetworkConfig(BaseModel):
+    ssid: str = Field(default="", max_length=64)
+    password: str = Field(default="", max_length=128)
 
 
 class DiscoveryResponse(BaseModel):
@@ -147,6 +160,21 @@ class CaptureSession(BaseModel):
     grids_total: int = Field(default=0, ge=0)
     grids_completed: int = Field(default=0, ge=0)
     errors: list[str] = Field(default_factory=list)
+
+
+class SessionMediaAsset(BaseModel):
+    path: str
+    name: str
+    kind: Literal["source", "clip"]
+    camera_name: str
+    size_bytes: int = Field(ge=0)
+    duration_seconds: float = Field(ge=0)
+    fps: float = Field(gt=0)
+    width: int = Field(ge=0)
+    height: int = Field(ge=0)
+    codec: str
+    creation_time: datetime | None = None
+    timecode: str | None = None
 
 
 class SyncValidationCameraResult(BaseModel):

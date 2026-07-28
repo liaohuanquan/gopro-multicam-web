@@ -1,4 +1,4 @@
-import type { BatchCommandResponse, CameraStatus, CaptureSession, CreateTaskEventInput, DiscoverCameraInput, DiscoveryResponse, RecordingConfig, SyncValidationReport, TaskEvent, TaskEventListResponse } from "./types";
+import type { BatchCommandResponse, CameraStatus, CaptureSession, CreateTaskEventInput, DiscoverCameraInput, DiscoveryResponse, NetworkConfig, RecordingConfig, RecordingPreset, SessionMediaAsset, SyncValidationReport, TaskEvent, TaskEventListResponse } from "./types";
 
 async function request<T>(url: string, init?: RequestInit): Promise<T> {
   const response = await fetch(url, {
@@ -42,6 +42,36 @@ export function updateRecordingConfig(config: RecordingConfig): Promise<Recordin
     method: "PUT",
     body: JSON.stringify(config),
   });
+}
+
+export function getRecordingPresets(): Promise<RecordingPreset[]> {
+  return request("/api/recording-presets");
+}
+
+export function getNetworkConfig(): Promise<NetworkConfig> {
+  return request("/api/config/network");
+}
+
+export function updateNetworkConfig(config: NetworkConfig): Promise<NetworkConfig> {
+  return request("/api/config/network", {
+    method: "PUT",
+    body: JSON.stringify(config),
+  });
+}
+
+export function saveRecordingPreset(name: string, config: RecordingConfig): Promise<RecordingPreset> {
+  return request("/api/recording-presets", {
+    method: "PUT",
+    body: JSON.stringify({ name, config }),
+  });
+}
+
+export async function deleteRecordingPreset(name: string): Promise<void> {
+  const response = await fetch(`/api/recording-presets/${encodeURIComponent(name)}`, { method: "DELETE" });
+  if (!response.ok) {
+    const payload = await response.json().catch(() => null) as { detail?: string } | null;
+    throw new Error(payload?.detail ?? `删除失败：${response.status}`);
+  }
 }
 
 export function discoverCameras(input: DiscoverCameraInput): Promise<DiscoveryResponse> {
@@ -95,6 +125,15 @@ export function getCaptureSession(sessionId: string): Promise<CaptureSession> {
 
 export function getCaptureSessions(): Promise<CaptureSession[]> {
   return request("/api/capture-sessions");
+}
+
+export function getCaptureSessionMedia(sessionId: string): Promise<SessionMediaAsset[]> {
+  return request(`/api/capture-sessions/${encodeURIComponent(sessionId)}/media`);
+}
+
+export function getCaptureSessionMediaUrl(sessionId: string, path: string): string {
+  const encodedPath = path.split("/").map(encodeURIComponent).join("/");
+  return `/api/capture-sessions/${encodeURIComponent(sessionId)}/media-file/${encodedPath}`;
 }
 
 export function processCaptureSession(sessionId: string): Promise<CaptureSession> {

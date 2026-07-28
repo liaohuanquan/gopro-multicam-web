@@ -79,8 +79,8 @@ export function ControlDock({ cameraCount, explicitlySelected, startDisabled, st
           ? <button className="button secondary" onClick={onOpenProjects}><FolderKanban size={17} /> 打开项目</button>
           : collecting
           ? <button className="button stop" onClick={onCancel}><X size={17} /> 中断收集</button>
-          : <button className="button stop" disabled={stopDisabled} onClick={onStop}><Square size={17} fill="currentColor" /> 结束并收集</button>}
-        <button className="button start" disabled={startDisabled} onClick={onStart}><span className="rec-dot" /> 全部开始录制</button>
+          : <button className="button stop" disabled={stopDisabled} onClick={onStop}><Square size={17} fill="currentColor" /> 结束录制</button>}
+        <button className="button start" disabled={startDisabled} onClick={onStart}><span className="rec-dot" /> 开始录制</button>
       </div>
     </footer>
   );

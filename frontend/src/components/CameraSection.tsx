@@ -39,7 +39,7 @@ export function CameraSection({ cameras, selectedIds, loadingError, onAddCamera,
         <div className="empty-state">
           <div><Camera size={30} /></div>
           <h3>设备组还是空的</h3>
-          <p>生成 GoPro Labs 二维码，让 HERO13 扫码加入采集网络并应用统一录制参数。</p>
+          <p>生成 GoPro Labs 二维码，让 HERO9 或 HERO13 加入采集网络并应用兼容参数。</p>
           <button className="button secondary" onClick={onAddCamera}><Plus size={17} />扫码添加第一台相机</button>
         </div>
       ) : (

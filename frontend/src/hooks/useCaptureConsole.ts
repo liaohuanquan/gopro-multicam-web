@@ -29,9 +29,14 @@ function summarizeResult(result: BatchCommandResponse, successText: string) {
   });
 }
 
+export function toggleSelectedCamera(current: string[] | null, cameraIds: string[], id: string): string[] {
+  const selected = current ?? cameraIds;
+  return selected.includes(id) ? selected.filter((item) => item !== id) : [...selected, id];
+}
+
 export function useCaptureConsole({ onDiscovered }: { onDiscovered?: () => void } = {}) {
   const queryClient = useQueryClient();
-  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [selectedIds, setSelectedIds] = useState<string[] | null>(null);
   const [taskName, setTaskName] = useState("任务 01");
   const [captureSessionId, setCaptureSessionId] = useState<string | null>(() => window.localStorage.getItem("gopro-multicam.capture-session"));
 
@@ -53,7 +58,7 @@ export function useCaptureConsole({ onDiscovered }: { onDiscovered?: () => void 
   });
 
   const cameras = camerasQuery.data ?? [];
-  const effectiveSelectedIds = selectedIds.length ? selectedIds : cameras.map((camera) => camera.id);
+  const effectiveSelectedIds = selectedIds ?? cameras.map((camera) => camera.id);
 
   const taskEventMutation = useMutation({
     mutationFn: ({ event, active }: { event: "start" | "end"; active: TaskEvent | null }) => createTaskEvent({
@@ -164,7 +169,7 @@ export function useCaptureConsole({ onDiscovered }: { onDiscovered?: () => void 
   }), [cameras]);
 
   function toggleCamera(id: string) {
-    setSelectedIds((current) => current.includes(id) ? current.filter((item) => item !== id) : [...current, id]);
+    setSelectedIds((current) => toggleSelectedCamera(current, cameras.map((camera) => camera.id), id));
   }
 
   const cameraCommandPending = startCaptureMutation.isPending
@@ -181,7 +186,8 @@ export function useCaptureConsole({ onDiscovered }: { onDiscovered?: () => void 
     taskEventsQuery,
     taskName,
     setTaskName,
-    selectedIds,
+    selectedIds: selectedIds ?? [],
+    selectionExplicit: selectedIds !== null,
     effectiveSelectedIds,
     summary,
     cameraCommandPending,

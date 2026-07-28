@@ -2,6 +2,8 @@ export interface CameraStatus {
   id: string;
   name: string;
   serial: string;
+  model_name: string;
+  firmware_version: string | null;
   location: string;
   online: boolean;
   battery_percent: number | null;
@@ -40,6 +42,17 @@ export interface RecordingConfig {
   hindsight: boolean | null;
   shutter_speed: 0 | 120 | 240 | 480 | null;
   iso: 100 | 200 | 400 | 800 | 1600 | null;
+}
+
+export interface RecordingPreset {
+  name: string;
+  config: RecordingConfig;
+  builtin: boolean;
+}
+
+export interface NetworkConfig {
+  ssid: string;
+  password: string;
 }
 
 export interface DiscoverCameraInput {
@@ -109,6 +122,21 @@ export interface CaptureSession {
   grids_total: number;
   grids_completed: number;
   errors: string[];
+}
+
+export interface SessionMediaAsset {
+  path: string;
+  name: string;
+  kind: "source" | "clip";
+  camera_name: string;
+  size_bytes: number;
+  duration_seconds: number;
+  fps: number;
+  width: number;
+  height: number;
+  codec: string;
+  creation_time: string | null;
+  timecode: string | null;
 }
 
 export interface SyncValidationCameraResult {

@@ -3,8 +3,8 @@ from pathlib import Path
 
 import httpx
 
-from app.adapters import CohnCameraAdapter
-from app.models import DiscoverCameraRequest, RecordingConfig, ShutterAction, UpdateCameraRequest
+from app.adapters import CohnCameraAdapter, RegisteredCamera
+from app.models import DiscoverCameraRequest, NetworkConfig, RecordingConfig, RecordingPreset, ShutterAction, UpdateCameraRequest
 
 
 def test_builds_optional_recording_command_and_label() -> None:
@@ -43,8 +43,36 @@ def test_builds_sync_validation_preset_command_and_label() -> None:
     )
 
 
+def test_adapts_recording_config_to_hero9_capabilities() -> None:
+    camera = RegisteredCamera(
+        id="hero9", name="GP09", serial="SERIAL9", model_name="HERO9 Black",
+        location="未设置", ip_address="192.168.1.9", username="gopro", password="secret",
+        profile_label="", firmware_version="HD9.01.72.70",
+    )
+    config = RecordingConfig(
+        resolution="5.3K_8_7", fps=60, lens="hyperview", bit_depth=10,
+        color="natural", high_bitrate=True, stabilization="auto_boost",
+        hindsight=False, shutter_speed=120, iso=400,
+    )
+
+    adapted = CohnCameraAdapter._config_for_camera(camera, config)
+
+    assert adapted.resolution == "4K"
+    assert adapted.fps == 60
+    assert adapted.lens == "wide"
+    assert adapted.bit_depth == 8
+    assert adapted.color is None
+    assert adapted.stabilization == "high"
+    assert adapted.shutter_speed is None
+    assert adapted.iso is None
+    assert CohnCameraAdapter._hero9_setting_changes(adapted) == [
+        (2, 1), (3, 5), (121, 0), (182, 1), (135, 2), (167, 0),
+    ]
+    assert "59.94 FPS" in CohnCameraAdapter._recording_config_label(adapted, hero9=True)
+
+
 async def test_updates_recording_config_without_changing_credentials(tmp_path: Path) -> None:
-    credentials_path = tmp_path / "cohn_credentials.json"
+    credentials_path = tmp_path / "config.json"
     credentials_path.write_text(json.dumps({
         "version": 1,
         "recording_config": {"resolution": "4K", "fps": 30},
@@ -58,6 +86,50 @@ async def test_updates_recording_config_without_changing_credentials(tmp_path: P
     assert updated.resolution == "1080P"
     assert payload["recording_config"]["fps"] == 60
     assert payload["cameras"][0]["password"] == "secret"
+
+
+async def test_saves_lists_and_deletes_custom_recording_preset(tmp_path: Path) -> None:
+    config_path = tmp_path / "config.json"
+    config_path.write_text(json.dumps({
+        "version": 1,
+        "recording_config": {"resolution": "4K", "fps": 30},
+        "cameras": [],
+    }), encoding="utf-8")
+    adapter = CohnCameraAdapter(tmp_path / "cameras.json", credentials_path=config_path)
+
+    saved = await adapter.save_recording_preset(RecordingPreset(
+        name="室内采集",
+        config=RecordingConfig(resolution="4K", fps=60, stabilization="off"),
+    ))
+
+    assert saved.name == "室内采集"
+    assert [preset.name for preset in adapter.get_recording_presets()] == [
+        "日常 4K", "高帧率采集", "同步验证", "室内采集",
+    ]
+    payload = json.loads(config_path.read_text(encoding="utf-8"))
+    assert payload["recording_presets"]["室内采集"]["fps"] == 60
+
+    await adapter.delete_recording_preset("室内采集")
+
+    assert "室内采集" not in json.loads(config_path.read_text(encoding="utf-8"))["recording_presets"]
+
+
+async def test_updates_network_section_without_changing_other_config(tmp_path: Path) -> None:
+    config_path = tmp_path / "config.json"
+    config_path.write_text(json.dumps({
+        "version": 1,
+        "recording_config": {"resolution": "4K", "fps": 30},
+        "cameras": [{"username": "gopro", "password": "camera-secret"}],
+    }), encoding="utf-8")
+    adapter = CohnCameraAdapter(tmp_path / "cameras.json", credentials_path=config_path)
+
+    updated = await adapter.update_network_config(NetworkConfig(ssid="EGO4D", password="wifi-secret"))
+
+    payload = json.loads(config_path.read_text(encoding="utf-8"))
+    assert updated.ssid == "EGO4D"
+    assert adapter.get_network_config().password == "wifi-secret"
+    assert payload["recording_config"]["resolution"] == "4K"
+    assert payload["cameras"][0]["password"] == "camera-secret"
 
 
 
@@ -158,6 +230,8 @@ async def test_discovers_controls_locates_and_reads_monitor(
     registered = discovered.cameras[0]
     assert registered.name == "GP01"
     assert registered.serial == "C3531234567890"
+    assert registered.model_name == "HERO13 Black"
+    assert registered.firmware_version == "HD13.02.10.70"
     assert registered.battery_percent == 87
     assert registered.sd_remaining_minutes == 120
     assert registered.sd_remaining_gb == 64.0
@@ -239,7 +313,7 @@ async def test_multiple_devices_keep_unique_monotonic_names(tmp_path: Path) -> N
 
 
 async def test_discovers_with_targeted_cohn_credentials(tmp_path: Path) -> None:
-    credentials_path = tmp_path / "cohn_credentials.json"
+    credentials_path = tmp_path / "config.json"
     credentials_path.write_text(
         '{"cameras":[{"last_known_ip":"192.168.1.203","username":"gopro","password":"secret"}]}',
         encoding="utf-8",

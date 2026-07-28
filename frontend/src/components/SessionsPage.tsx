@@ -1,9 +1,11 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { FolderKanban, LoaderCircle, Play, RefreshCw, Video } from "lucide-react";
+import { Eye, FolderKanban, LoaderCircle, Play, RefreshCw, Video } from "lucide-react";
+import { useState } from "react";
 import { toast } from "sonner";
 
 import { getCaptureSessions, processCaptureSession } from "../api";
 import type { CaptureSession } from "../types";
+import { MediaPlayerDialog } from "./MediaPlayerDialog";
 
 const statusText: Record<CaptureSession["status"], string> = {
   recording: "录制中",
@@ -29,6 +31,7 @@ function formatBytes(value: number) {
 }
 
 export function SessionsPage() {
+  const [mediaSession, setMediaSession] = useState<CaptureSession | null>(null);
   const queryClient = useQueryClient();
   const sessionsQuery = useQuery({
     queryKey: ["capture-sessions"],
@@ -83,15 +86,19 @@ export function SessionsPage() {
               {session.errors.length > 0 && <p className="project-error">{session.errors[0]}</p>}
               <footer>
                 <span><Video size={15} /> 原始素材保存在 <code>source/</code>，算法输出到 <code>clips/</code></span>
-                <button className="button secondary" disabled={!canProcess || processing || processMutation.isPending} onClick={() => processMutation.mutate(session.id)}>
-                  {processing ? <LoaderCircle className="spin" size={16} /> : <Play size={16} fill="currentColor" />}
-                  {session.status === "complete" ? "重新生成" : "生成切片"}
-                </button>
+                <div className="project-actions">
+                  <button className="button ghost" disabled={session.files_completed === 0} onClick={() => setMediaSession(session)}><Eye size={16} />查看素材</button>
+                  <button className="button secondary" disabled={!canProcess || processing || processMutation.isPending} onClick={() => processMutation.mutate(session.id)}>
+                    {processing ? <LoaderCircle className="spin" size={16} /> : <Play size={16} fill="currentColor" />}
+                    {session.status === "complete" ? "重新生成" : "生成切片"}
+                  </button>
+                </div>
               </footer>
             </article>
           );
         })}
       </section>
+      {mediaSession && <MediaPlayerDialog session={mediaSession} onClose={() => setMediaSession(null)} />}
     </div>
   );
 }

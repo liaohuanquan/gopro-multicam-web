@@ -3,6 +3,8 @@ import json
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
+import pytest
+
 from app.adapters import CameraMediaFile
 from app.capture_sessions import CaptureSessionStore
 from app.models import CameraStatus, TaskEvent, TaskEventListResponse, TaskEventType
@@ -229,3 +231,18 @@ async def test_lists_legacy_session_with_task_count_from_events(tmp_path: Path) 
 
     assert len(sessions) == 1
     assert sessions[0].task_count == 1
+
+
+async def test_resolves_only_video_files_inside_session_media_directories(tmp_path: Path) -> None:
+    adapter = FakeAdapter()
+    store = CaptureSessionStore(tmp_path / "sessions", adapter, finalize_delay=0)
+    session = await store.begin(["camera-1"])
+    video = tmp_path / "sessions" / session.id / "source" / "GP01" / "GX010001.MP4"
+    video.parent.mkdir(parents=True)
+    video.write_bytes(b"video")
+
+    assert store.resolve_media_path(session.id, "source/GP01/GX010001.MP4") == video.resolve()
+    with pytest.raises(FileNotFoundError):
+        store.resolve_media_path(session.id, "../../outside.mp4")
+    with pytest.raises(FileNotFoundError):
+        store.resolve_media_path(session.id, "session.json")

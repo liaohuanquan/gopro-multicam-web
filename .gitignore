@@ -8,4 +8,4 @@ frontend/*.tsbuildinfo
 frontend/vite.config.js
 frontend/vite.config.d.ts
 data/
-cohn_credentials.json
+config.json

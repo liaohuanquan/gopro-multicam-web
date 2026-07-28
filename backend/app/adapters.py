@@ -12,7 +12,7 @@ from typing import Any
 import httpx
 import imageio_ffmpeg
 
-from .models import CameraStatus, DiscoverCameraRequest, DiscoveryResponse, RecordingConfig, ShutterAction, UpdateCameraRequest
+from .models import CameraStatus, DiscoverCameraRequest, DiscoveryResponse, NetworkConfig, RecordingConfig, RecordingPreset, ShutterAction, UpdateCameraRequest
 
 
 class CameraUnavailableError(RuntimeError):
@@ -25,6 +25,22 @@ class CameraNotFoundError(KeyError):
 
 class CameraRegistrationError(RuntimeError):
     pass
+
+
+BUILTIN_RECORDING_PRESETS = [
+    RecordingPreset(name="日常 4K", builtin=True, config=RecordingConfig(
+        resolution="4K", fps=30, lens="wide", bit_depth=10, color="natural",
+        high_bitrate=True, stabilization="auto_boost", hindsight=False,
+    )),
+    RecordingPreset(name="高帧率采集", builtin=True, config=RecordingConfig(
+        resolution="4K", fps=60, lens="wide", bit_depth=10, color="natural",
+        high_bitrate=True, stabilization="high", hindsight=False,
+    )),
+    RecordingPreset(name="同步验证", builtin=True, config=RecordingConfig(
+        resolution="1080P", fps=30, lens="wide", bit_depth=8, color="natural",
+        high_bitrate=False, stabilization="off", hindsight=False, shutter_speed=120, iso=400,
+    )),
+]
 
 
 class CameraAdapter(ABC):
@@ -61,6 +77,7 @@ class RegisteredCamera:
     timecode_synced_at: str | None = None
     open_network: bool = False
     sequence: int = 0
+    firmware_version: str = ""
 
 
 @dataclass
@@ -128,7 +145,7 @@ class CohnCameraAdapter(CameraAdapter):
 
     def _load_recording_config(self) -> RecordingConfig:
         if self._credentials_path is None or not self._credentials_path.exists():
-            raise CameraRegistrationError("未配置 COHN 凭据文件")
+            raise CameraRegistrationError("未配置 config.json")
         try:
             payload = json.loads(self._credentials_path.read_text(encoding="utf-8"))
             config = RecordingConfig.model_validate(payload.get("recording_config", {}))
@@ -143,7 +160,7 @@ class CohnCameraAdapter(CameraAdapter):
 
     async def update_recording_config(self, config: RecordingConfig) -> RecordingConfig:
         if self._credentials_path is None or not self._credentials_path.exists():
-            raise CameraRegistrationError("未配置 COHN 凭据文件")
+            raise CameraRegistrationError("未配置 config.json")
         if all(value is None for value in config.model_dump().values()):
             raise CameraRegistrationError("recording_config 至少保留一个参数")
         async with self._store_lock:
@@ -158,6 +175,88 @@ class CohnCameraAdapter(CameraAdapter):
             except (json.JSONDecodeError, OSError, TypeError, ValueError) as exc:
                 raise CameraRegistrationError("recording_config 保存失败") from exc
         return config
+
+    def get_recording_presets(self) -> list[RecordingPreset]:
+        custom: list[RecordingPreset] = []
+        if self._credentials_path is not None and self._credentials_path.exists():
+            try:
+                payload = json.loads(self._credentials_path.read_text(encoding="utf-8"))
+                custom = [
+                    RecordingPreset(name=name, config=RecordingConfig.model_validate(config))
+                    for name, config in payload.get("recording_presets", {}).items()
+                ]
+            except (json.JSONDecodeError, TypeError, ValueError) as exc:
+                raise CameraRegistrationError("recording_presets 格式不正确") from exc
+        return [*BUILTIN_RECORDING_PRESETS, *sorted(custom, key=lambda item: item.name)]
+
+    def get_network_config(self) -> NetworkConfig:
+        if self._credentials_path is None or not self._credentials_path.exists():
+            return NetworkConfig()
+        try:
+            payload = json.loads(self._credentials_path.read_text(encoding="utf-8"))
+            return NetworkConfig.model_validate(payload.get("network", {}))
+        except (json.JSONDecodeError, TypeError, ValueError) as exc:
+            raise CameraRegistrationError("network 配置格式不正确") from exc
+
+    async def update_network_config(self, config: NetworkConfig) -> NetworkConfig:
+        if self._credentials_path is None or not self._credentials_path.exists():
+            raise CameraRegistrationError("未配置 config.json")
+        async with self._store_lock:
+            try:
+                payload = json.loads(self._credentials_path.read_text(encoding="utf-8"))
+                payload["network"] = config.model_dump()
+                self._write_config(payload)
+            except (json.JSONDecodeError, OSError, TypeError, ValueError) as exc:
+                raise CameraRegistrationError("network 配置保存失败") from exc
+        return config
+
+    async def save_recording_preset(self, preset: RecordingPreset) -> RecordingPreset:
+        if self._credentials_path is None or not self._credentials_path.exists():
+            raise CameraRegistrationError("未配置 config.json")
+        name = preset.name.strip()
+        if any(item.name == name for item in BUILTIN_RECORDING_PRESETS):
+            raise CameraRegistrationError("内置预设不能覆盖")
+        if all(value is None for value in preset.config.model_dump().values()):
+            raise CameraRegistrationError("预设至少保留一个参数")
+        async with self._store_lock:
+            try:
+                payload = json.loads(self._credentials_path.read_text(encoding="utf-8"))
+                presets = payload.setdefault("recording_presets", {})
+                if not isinstance(presets, dict):
+                    raise TypeError
+                presets[name] = preset.config.model_dump()
+                self._write_config(payload)
+            except (json.JSONDecodeError, OSError, TypeError, ValueError) as exc:
+                raise CameraRegistrationError("预设保存失败") from exc
+        return RecordingPreset(name=name, config=preset.config)
+
+    async def delete_recording_preset(self, name: str) -> None:
+        if self._credentials_path is None or not self._credentials_path.exists():
+            raise CameraRegistrationError("未配置 config.json")
+        if any(item.name == name for item in BUILTIN_RECORDING_PRESETS):
+            raise CameraRegistrationError("内置预设不能删除")
+        async with self._store_lock:
+            try:
+                payload = json.loads(self._credentials_path.read_text(encoding="utf-8"))
+                presets = payload.get("recording_presets", {})
+                if not isinstance(presets, dict):
+                    raise TypeError
+                if name not in presets:
+                    raise CameraRegistrationError("预设不存在")
+                del presets[name]
+                self._write_config(payload)
+            except CameraRegistrationError:
+                raise
+            except (json.JSONDecodeError, OSError, TypeError, ValueError) as exc:
+                raise CameraRegistrationError("预设删除失败") from exc
+
+    def _write_config(self, payload: dict[str, Any]) -> None:
+        assert self._credentials_path is not None
+        self._credentials_path.write_text(
+            json.dumps(payload, ensure_ascii=False, indent=2) + "\n",
+            encoding="utf-8",
+        )
+        self._credentials_path.chmod(0o600)
 
     @staticmethod
     def _build_recording_command(config: RecordingConfig) -> str:
@@ -181,11 +280,57 @@ class CohnCameraAdapter(CameraAdapter):
         )
 
     @staticmethod
-    def _recording_config_label(config: RecordingConfig) -> str:
+    def _is_hero9(camera: RegisteredCamera) -> bool:
+        return "HERO9" in camera.model_name.upper().replace(" ", "")
+
+    @classmethod
+    def _config_for_camera(cls, camera: RegisteredCamera, config: RecordingConfig) -> RecordingConfig:
+        """将统一参数收敛到 HERO9 实际支持的参数集合。"""
+        if not cls._is_hero9(camera):
+            return config
         values = config.model_dump()
+        if values["resolution"] == "5.3K_8_7":
+            values["resolution"] = "4K"
+        if values["lens"] == "hyperview":
+            values["lens"] = "wide"
+        if values["bit_depth"] == 10:
+            values["bit_depth"] = 8
+        if values["color"] == "natural":
+            values["color"] = "vibrant"
+        if values["stabilization"] == "auto_boost":
+            values["stabilization"] = "high"
+        # HERO9 不能通过 Wi-Fi Labs 命令修改这些 Protune 项，避免界面显示为已应用。
+        values["color"] = None
+        values["shutter_speed"] = None
+        values["iso"] = None
+        return RecordingConfig.model_validate(values)
+
+    @staticmethod
+    def _hero9_setting_changes(config: RecordingConfig) -> list[tuple[int, int]]:
+        values = config.model_dump()
+        mappings: dict[str, tuple[int, dict[Any, int]]] = {
+            "resolution": (2, {"1080P": 9, "4K": 1}),
+            "fps": (3, {24: 10, 25: 9, 30: 8, 50: 6, 60: 5}),
+            "lens": (121, {"wide": 0, "linear": 4}),
+            "high_bitrate": (182, {False: 0, True: 1}),
+            "stabilization": (135, {"off": 0, "high": 2}),
+            "hindsight": (167, {False: 0, True: 1}),
+        }
+        return [
+            (setting_id, options[values[field]])
+            for field, (setting_id, options) in mappings.items()
+            if values[field] is not None
+        ]
+
+    @staticmethod
+    def _recording_config_label(config: RecordingConfig, hero9: bool = False) -> str:
+        values = config.model_dump()
+        fps_labels = {value: f"{value} FPS" for value in (24, 25, 30, 50, 60)}
+        if hero9:
+            fps_labels.update({24: "23.976 FPS", 30: "29.97 FPS", 60: "59.94 FPS"})
         labels = {
             "resolution": {"1080P": "1080P", "4K": "4K", "5.3K_8_7": "5.3K 8:7"},
-            "fps": {value: f"{value} FPS" for value in (24, 25, 30, 50, 60)},
+            "fps": fps_labels,
             "lens": {"wide": "Wide", "linear": "Linear", "hyperview": "HyperView"},
             "bit_depth": {8: "8-bit", 10: "10-bit"},
             "color": {"natural": "Natural", "flat": "Flat", "vibrant": "Vibrant"},
@@ -283,6 +428,8 @@ class CohnCameraAdapter(CameraAdapter):
             id=camera.id,
             name=camera.name,
             serial=camera.serial,
+            model_name=camera.model_name,
+            firmware_version=camera.firmware_version or None,
             location=camera.location,
             online=True,
             battery_percent=self._read_int(statuses, "70"),
@@ -311,6 +458,8 @@ class CohnCameraAdapter(CameraAdapter):
             id=camera.id,
             name=camera.name,
             serial=camera.serial,
+            model_name=camera.model_name,
+            firmware_version=camera.firmware_version or None,
             location=camera.location,
             online=False,
             battery_percent=None,
@@ -335,7 +484,7 @@ class CohnCameraAdapter(CameraAdapter):
                 camera_status = await self._fetch_status(camera)
                 became_online = not self._online_states.get(camera.id, False)
                 self._online_states[camera.id] = not camera_status.recording
-                if became_online and not camera_status.recording:
+                if became_online and not camera_status.recording and not self._is_hero9(camera):
                     try:
                         await self._sync_timecode(camera)
                         camera_status.timecode_synced_at = datetime.fromisoformat(camera.timecode_synced_at)
@@ -409,6 +558,8 @@ class CohnCameraAdapter(CameraAdapter):
                     existing.password = credential.password if credential else ""
                     existing.open_network = credential is None
                     existing.profile_label = request.profile_label
+                    existing.model_name = str(info.get("model_name", existing.model_name)).strip()
+                    existing.firmware_version = str(info.get("firmware_version", existing.firmware_version)).strip()
                 else:
                     sequence = self._next_camera_sequence
                     self._next_camera_sequence += 1
@@ -424,6 +575,7 @@ class CohnCameraAdapter(CameraAdapter):
                         profile_label=request.profile_label,
                         open_network=credential is None,
                         sequence=sequence,
+                        firmware_version=str(info.get("firmware_version", "")).strip(),
                     )
                 self._camera_locks.setdefault(camera_id, asyncio.Lock())
                 discovered_ids.append(camera_id)
@@ -488,14 +640,19 @@ class CohnCameraAdapter(CameraAdapter):
             if status.recording:
                 raise CameraUnavailableError(f"{camera.name} 正在录制，不能修改录制参数")
             config = self._load_recording_config()
-            command = self._build_recording_command(config)
+            camera_config = self._config_for_camera(camera, config)
             async with self._client(camera) as client:
-                response = await client.get(
-                    "/gopro/qrcode",
-                    params={"labs": "1", "code": command},
-                )
-                response.raise_for_status()
-            camera.profile_label = self._recording_config_label(config)
+                if self._is_hero9(camera):
+                    for setting_id, value in self._hero9_setting_changes(camera_config):
+                        response = await client.get(f"/gopro/camera/setting/{setting_id}/{value}")
+                        response.raise_for_status()
+                else:
+                    response = await client.get(
+                        "/gopro/qrcode",
+                        params={"labs": "1", "code": self._build_recording_command(camera_config)},
+                    )
+                    response.raise_for_status()
+            camera.profile_label = self._recording_config_label(camera_config, hero9=self._is_hero9(camera))
             async with self._store_lock:
                 await self._save()
             return await self._fetch_status(camera)

@@ -6,7 +6,7 @@ services:
     environment:
       GOPRO_DATA_DIR: /data
       GOPRO_CAPTURE_DIR: /captures
-      GOPRO_CREDENTIALS_FILE: /config/cohn_credentials.json
+      GOPRO_CONFIG_FILE: /config/config.json
       GOPRO_SCAN_CIDRS: "${GOPRO_SCAN_CIDRS:-192.168.1.0/24}"
       GOPRO_PREVIEW_PORT_START: "8554"
       GOPRO_MEDIA_FINALIZE_DELAY_SECONDS: "${GOPRO_MEDIA_FINALIZE_DELAY_SECONDS:-15}"
@@ -15,7 +15,7 @@ services:
     volumes:
       - gopro-data:/data
       - ./data:/captures
-      - ./cohn_credentials.json:/config/cohn_credentials.json
+      - ./config.json:/config/config.json
     healthcheck:
       test:
         - CMD

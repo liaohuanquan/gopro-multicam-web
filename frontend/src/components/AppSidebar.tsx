@@ -21,7 +21,6 @@ export function AppSidebar({ summary, total, timecodeUrl, currentPage, onNavigat
     <aside className="app-sidebar">
       <div className="sidebar-chrome">
         <div className="brand">
-          <div className="brand-mark"><img src="/synapath-logo.png" alt="Synapath" /></div>
           <div><h1>采集控制台</h1><p>GoPro HERO9 / HERO13</p></div>
         </div>
       </div>

@@ -28,9 +28,20 @@
 
 ## Docker 启动（推荐）
 
+需要安装 Git、Docker Engine 和 Docker Compose v2。运行服务的电脑须能访问相机所在局域网。
+
+首次使用：
+
 ```bash
+git clone https://github.com/liaohuanquan/gopro-multicam-web.git
+cd gopro-multicam-web
+cp config.example.json config.json
 ./run.sh up
 ```
+
+`config.json` 保存本机相机与网络配置，已被 Git 忽略。仅首次创建，不要覆盖已有配置；Wi-Fi 和录制参数可在页面中设置。采集素材保存在 `data/`，设备状态和任务事件保存在 Docker 数据卷。
+
+网页和后端接口目前没有登录鉴权，请仅在可信采集网络使用，不要将服务端口暴露到公网。
 
 本机打开 `http://localhost:15173`；通过 SSH 部署时，使用服务器局域网 IP，例如 `http://192.168.1.205:15173`。
 
@@ -59,12 +70,14 @@ GOPRO_SCAN_CIDRS=192.168.50.0/24 ./run.sh up
 
 ## 不使用 Docker 启动
 
+需要 Python 3.10+、uv 和 Node.js 20.19+；先按上面的步骤克隆仓库并创建 `config.json`。
+
 后端：
 
 ```bash
 cd backend
 uv sync
-uv run uvicorn app.main:app --reload
+GOPRO_CONFIG_FILE=../config.json uv run uvicorn app.main:app --reload
 ```
 
 前端：
@@ -133,3 +146,8 @@ data/session_YYYYMMDD_HHMMSS_ffffff/
 每个任务切片完成后会生成 `preview_grid.mp4`：2 台相机左右并排，3 台相机上二下一，4 台相机使用 2×2 四宫格。单台采集不生成宫格文件。该文件只用于快速检查多机位同步，独立的 GPxx 文件仍是正式结果。
 
 任务按钮不会向相机发送时间设置命令；即使只有三台相机可被 Web 控制，只要第四台已经完成时间码同步并持续录制，也可以在后期使用相同 UTC 切片。
+
+## 许可证
+
+本项目原创源码采用 [MIT License](LICENSE)，允许使用、修改和分发，包括商用。
+第三方依赖、品牌标识及 Ego-Exo4D 示例素材保留各自权利，不因本仓库的 MIT 许可证获得重新授权。
